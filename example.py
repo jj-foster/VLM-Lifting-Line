@@ -6,7 +6,8 @@ example=vlm.VLM()
 example.geometry("plane1.json")
 
 Q_inf=30
-alpha=np.linspace(0,20,5)
+
+alpha=np.linspace(0,10,10)
 beta=0
 
 L_list=[]
@@ -19,8 +20,7 @@ for a in alpha:
 
 #print(f"Qinf={Q_inf} m/s, alpha={alpha} deg, beta={beta} deg")
 #print(f"L={L} N, Di={D} N")
-print(L_list)
-print(alpha)
+
 example.plot_mesh(cp=False)
 
 fig1,ax1=plt.subplots()
