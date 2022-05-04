@@ -224,7 +224,15 @@ class VLM():
                     x,y,z,x_A,y_A,z_A,x_B,y_B,z_B,
                     x_C,y_C,z_C,x_D,y_D,z_D,1,R
                 )
-                #print(q,_q,n)
+                # Wing symmetrical in x-z plane.
+                q_image,_q_image=horseshoe_vortex(
+                    x,-y,z,x_A,y_A,z_A,x_B,y_B,z_B,
+                    x_C,y_C,z_C,x_D,y_D,z_D,1,R
+                )
+
+                q=np.array([q[0]+q_image[0],q[1]-q_image[1],q[2]+q_image[2]])
+                _q=np.array([_q[0]+_q_image[0],_q[1]-_q_image[1],_q[2]+_q_image[2]])
+                
                 a[i][j]=np.dot(q,n)     #   influence coefficient matrix
                 b[i][j]=np.dot(_q,n)    #   normal component of wake induced downwash
 
@@ -238,9 +246,9 @@ class VLM():
             
             panels[j].dL=rho*Q_inf_mod*gamma[j]*panels[j].dy
             panels[j].dD=-rho*w_ind[j]*gamma[j]*panels[j].dy
-
-        L=round(sum([panel.dL for panel in panels]),5)
-        Di=round(sum([panel.dD for panel in panels]),5)
+        
+        L=round(2*sum([panel.dL for panel in panels]),5)    #   x2 for symmetry
+        Di=round(2*sum([panel.dD for panel in panels]),5)
 
         ## Aero coefficients
 
@@ -248,3 +256,4 @@ class VLM():
         C_Di=round(Di/(0.5*1.225*self.S_ref*Q_inf_mod**2),5)
 
         return C_L, C_Di
+        #return L, Di
