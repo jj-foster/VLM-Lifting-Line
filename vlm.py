@@ -162,7 +162,7 @@ class VLM():
                 # Singularity condition:
                 # If point lies on vortex, induced velocities=0
                 if r1_mod<R or r2_mod<R or r1x2_mod2<R:
-                    u,v,w=0
+                    u=v=w=0
                     return np.array([u,v,w])
 
                 r0dotr1=(x2-x1)*(x-x1)+(y2-y1)*(y-y1)+(z2-z1)*(z-z1)
