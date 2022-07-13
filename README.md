@@ -1,11 +1,10 @@
-LIMIATIONS:
+### Limitations:
 
--wings in x-y plane
-    -no camber
--no correction for trailing vortices affecting other wings
+- Wings in x-y plane so no camber.
+- Currently only one wing supported.
 
-DATA STRUCTURE:
-
+### Data Structure:
+```
 units: m,N,s
 
 plane
@@ -16,5 +15,6 @@ plane
             -chord start/end (dx)
             -no. spanwise elements (m)
 
-Mesh(n:list,sections:list of lists)
+Mesh(n:list,sections:list[list])
     symmetry is presumed in x-z plane
+```
