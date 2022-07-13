@@ -1,10 +1,9 @@
 import json
-
 import numpy as np
 from matplotlib import pyplot as plt
+from numba import jit, config
 
 from mesh_generator import Mesh
-
 
 class PlaneDefinitionError(Exception):
     """Raised when plane input data is formatted incorrectly."""
@@ -141,15 +140,12 @@ class VLM():
             beta - sideslip angle of attack (deg)
         """
 
-        def horseshoe_vortex(x,y,z,x_A,y_A,z_A,x_B,y_B,z_B,
-                            x_C,y_C,z_C,x_D,y_D,z_D,gamma,R):
-            """
-            Calculates induced velocity on a point due to a horseshoe vortex.
-            """
-            def line_vortex(x,y,z,x1,y1,z1,x2,y2,z2,gamma,R):
+        @jit(nopython=True)
+        def line_vortex(x,y,z,x1,y1,z1,x2,y2,z2,gamma,R):
                 """
                 Calculates induced velocity on a point due to a line vortex element.
                 """
+                
                 r1x2_x=(y-y1)*(z-z2)-(z-z1)*(y-y2)
                 r1x2_y=-(x-x1)*(z-z2)-(z-z1)*(x-x2)
                 r1x2_z=(x-x1)*(y-y2)-(y-y1)*(x-x2)
@@ -162,7 +158,7 @@ class VLM():
                 # Singularity condition:
                 # If point lies on vortex, induced velocities=0
                 if r1_mod<R or r2_mod<R or r1x2_mod2<R:
-                    u=v=w=0
+                    u=v=w=0.0
                     return np.array([u,v,w])
 
                 r0dotr1=(x2-x1)*(x-x1)+(y2-y1)*(y-y1)+(z2-z1)*(z-z1)
@@ -175,6 +171,14 @@ class VLM():
                 w=K*r1x2_z
 
                 return np.array([u,v,w])
+
+        @jit(nopython=True)
+        def horseshoe_vortex(x,y,z,x_A,y_A,z_A,x_B,y_B,z_B,
+                            x_C,y_C,z_C,x_D,y_D,z_D,gamma,R):
+            """
+            Calculates induced velocity on a point due to a horseshoe vortex.
+            """
+            
             
             #   Induced velocities by each line vortex in the trailing vortex
             q1=line_vortex(x,y,z,x_A,y_A,z_A,x_B,y_B,z_B,gamma,R)
@@ -185,6 +189,41 @@ class VLM():
             _q=q1+q3    #   Induced downwash velocity by horseshoe vortex on point P
 
             return q,_q
+
+        @jit(nopython=True)
+        def loop(a,b,RHS,N,alpha,panels_n,panels_cp,panels_B,panels_C,Q_inf):   
+            for i in range(N):  #   collocation point loop
+                n=panels_n[i]#.calc_normal(alpha)  #   panel normal vector
+                RHS[i]=np.dot(-Q_inf,n)         #   velocity vector normal to panel
+
+                for j in range(N):  #   vortex element loop   
+                    x,y,z=panels_cp[i]
+                    x_B,y_B,z_B=panels_B[j]
+                    x_C,y_C,z_C=panels_C[j]
+
+                    x_A=x_D=20*b_ref
+                    y_A=y_B
+                    y_D=y_C
+                    z_A=x_A*np.sin(alpha)
+                    z_D=x_D*np.sin(alpha)
+
+                    q,_q=horseshoe_vortex(
+                        x,y,z,x_A,y_A,z_A,x_B,y_B,z_B,
+                        x_C,y_C,z_C,x_D,y_D,z_D,1,R
+                    )
+                    # Wing symmetrical in x-z plane.
+                    q_image,_q_image=horseshoe_vortex(
+                        x,-y,z,x_A,y_A,z_A,x_B,y_B,z_B,
+                        x_C,y_C,z_C,x_D,y_D,z_D,1,R
+                    )
+
+                    q=np.array([q[0]+q_image[0],q[1]-q_image[1],q[2]+q_image[2]])
+                    _q=np.array([_q[0]+_q_image[0],_q[1]-_q_image[1],_q[2]+_q_image[2]])
+                    
+                    a[i][j]=np.dot(q,n)     #   influence coefficient matrix
+                    b[i][j]=np.dot(_q,n)    #   normal component of wake induced downwash
+
+            return a,b
 
         panels=self.Panels
         rho=self.rho
@@ -204,37 +243,13 @@ class VLM():
         a=np.zeros([N,N])
         RHS=np.zeros([N])
         b=np.zeros([N,N])
+        
+        panels_n=np.array([panel.n for panel in panels])
+        panels_cp=np.array([panel.cp for panel in panels])
+        panels_B=np.array([panel.B for panel in panels])
+        panels_C=np.array([panel.C for panel in panels])
 
-        for i in range(N):  #   collocation point loop
-            n=panels[i].calc_normal(alpha)  #   panel normal vector
-            RHS[i]=np.dot(-Q_inf,n)         #   velocity vector normal to panel
-
-            for j in range(N):  #   vortex element loop   
-                x,y,z=panels[i].cp
-                x_B,y_B,z_B=panels[j].B
-                x_C,y_C,z_C=panels[j].C
-
-                x_A=x_D=20*b_ref
-                y_A=y_B
-                y_D=y_C
-                z_A=x_A*np.sin(alpha)
-                z_D=x_D*np.sin(alpha)
-
-                q,_q=horseshoe_vortex(
-                    x,y,z,x_A,y_A,z_A,x_B,y_B,z_B,
-                    x_C,y_C,z_C,x_D,y_D,z_D,1,R
-                )
-                # Wing symmetrical in x-z plane.
-                q_image,_q_image=horseshoe_vortex(
-                    x,-y,z,x_A,y_A,z_A,x_B,y_B,z_B,
-                    x_C,y_C,z_C,x_D,y_D,z_D,1,R
-                )
-
-                q=np.array([q[0]+q_image[0],q[1]-q_image[1],q[2]+q_image[2]])
-                _q=np.array([_q[0]+_q_image[0],_q[1]-_q_image[1],_q[2]+_q_image[2]])
-                
-                a[i][j]=np.dot(q,n)     #   influence coefficient matrix
-                b[i][j]=np.dot(_q,n)    #   normal component of wake induced downwash
+        a,b=loop(a,b,RHS,N,alpha,panels_n,panels_cp,panels_B,panels_C,Q_inf)  #   main vlm loop
 
         gamma=np.linalg.solve(a,RHS)
         w_ind=np.matmul(b,gamma)
